@@ -1,0 +1,15 @@
+twitchio>=2.7.0
+aiohttp>=3.8.0
+websockets==15.0.1
+python-dotenv>=1.0.0
+
+# PyTorch 2.3, GPU-версия (совместима с TTS)
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.3.1+cu121
+
+TTS==0.22.0
+sounddevice==0.4.6
+# позволяем TTS подтянуть подходящий NumPy ≥2.0
+numpy<2.0
+redis==6.4.0
+transliterate==1.10.2

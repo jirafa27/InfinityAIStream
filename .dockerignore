@@ -1,0 +1,15 @@
+# Игнорируем виртуальное окружение
+venv/
+.venv/
+
+# Игнорируем файлы IDE и кеш
+.idea/
+.vscode/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Игнорируем файлы сборки Docker
+Dockerfile
+.dockerignore 

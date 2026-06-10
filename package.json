@@ -1,0 +1,11 @@
+{
+  "name": "infinity-aistream",
+  "private": true,
+  "description": "Корневые скрипты → visual-web/",
+  "scripts": {
+    "dev": "npm run dev --prefix visual-web",
+    "build": "npm run build --prefix visual-web",
+    "preview": "npm run preview --prefix visual-web",
+    "visual:install": "npm install --prefix visual-web"
+  }
+}

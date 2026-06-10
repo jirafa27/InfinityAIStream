@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/liquidflowcanvas.tsx","./src/components/visualoverlay.tsx","./src/hooks/useaudiosync.ts","./src/hooks/usevisualoverlay.ts","./src/hooks/usevisualstate.ts","./src/lib/complexity.ts","./src/lib/config.ts","./src/lib/liquidrenderer.ts","./src/lib/mood.ts"],"version":"5.9.3"}

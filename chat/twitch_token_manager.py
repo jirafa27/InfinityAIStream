@@ -5,13 +5,19 @@ from dotenv import load_dotenv
 
 from core.config import Config
 
+
 class TokenManager:
-    def __init__(self, env_path='.env.twitch'):
+    def __init__(self, env_path=".env.twitch"):
         self.env_path = env_path
         self._load_env()
 
     def _load_env(self):
-        load_dotenv(self.env_path)
+        from pathlib import Path
+
+        project_root = Path(__file__).resolve().parents[1]
+        load_dotenv(project_root / ".env")
+        if os.path.exists(self.env_path):
+            load_dotenv(self.env_path, override=True)
         self.client_id = Config.TWITCH_CLIENT_ID
         self.client_secret = Config.TWITCH_CLIENT_SECRET
         self.refresh_token = os.getenv("TWITCH_REFRESH_TOKEN")
@@ -48,7 +54,7 @@ class TokenManager:
 
     def get_token(self):
         return self.access_token
-    
+
 
 if __name__ == "__main__":
     token_manager = TokenManager()

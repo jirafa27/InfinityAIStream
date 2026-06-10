@@ -1,0 +1,7 @@
+# Минимальный набор для telegram_control (без twitchio/torch)
+websockets==15.0.1
+python-dotenv>=1.0.0
+redis==6.4.0
+aiogram>=3.4.0
+docker>=7.0.0
+aiohttp-socks>=0.8.4

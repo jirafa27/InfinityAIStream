@@ -4,3 +4,7 @@ venv/
 .env
 .env.twitch
 __pycache__/
+output/tts/
+output/.player.pid
+visual-web/node_modules/
+visual-web/dist/

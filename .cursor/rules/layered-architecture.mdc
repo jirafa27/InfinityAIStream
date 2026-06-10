@@ -1,0 +1,70 @@
+---
+description: Разделение слоёв (API, сервис, домен, инфраструктура) без просачивания
+alwaysApply: true
+---
+
+# Слоистая архитектура
+
+Соблюдай чёткие границы между слоями. Зависимости направлены **внутрь**: внешние слои зависят от внутренних, но не наоборот.
+
+## Слои и ответственность
+
+| Слой | Ответственность | Примеры в проекте |
+|------|-----------------|-------------------|
+| **Entry / API** | Точки входа, HTTP/WebSocket, CLI, боты | `run.py`, `chat/chat_reader_bot.py`, `run_streamer.py` |
+| **Application / Service** | Оркестрация use-case, координация | `podcast_generator/`, `streamer/` |
+| **Domain** | Бизнес-логика, сущности, правила | Чистые функции/классы без I/O |
+| **Infrastructure** | БД, Redis, внешние API, TTS | `redis/`, `speech/`, HTTP-клиенты |
+
+## Запрещено (просачивание слоёв)
+
+```python
+# ❌ BAD — домен знает про Redis
+class MessageProcessor:
+    def process(self, msg):
+        await redis_manager.publish("chat", msg)
+
+# ❌ BAD — инфраструктура содержит бизнес-правила
+class RedisManager:
+    def should_respond_to_message(self, text: str) -> bool:
+        return len(text) > 10 and "?" in text
+
+# ❌ BAD — entry point напрямую вызывает Redis/HTTP
+async def main():
+    await redis.set("key", value)
+    async with aiohttp.ClientSession() as s:
+        await s.post(LLM_URL, json={...})
+```
+
+## Правильно
+
+```python
+# ✅ GOOD — entry point только собирает и запускает
+async def main():
+    redis = RedisManager()
+    llm = LLMTextGenerator()
+    generator = PodcastGenerator(llm, redis)
+    await generator.run(session)
+
+# ✅ GOOD — сервис оркестрирует, домен решает «что», инфра — «как»
+class PodcastGenerator:
+    async def run(self, session):
+        text = self.llm.generate(prompt)          # инфра через абстракцию
+        if should_publish(text):                  # доменная логика
+            await self.redis.publish("tts", text) # инфра
+```
+
+## Правила зависимостей
+
+- **Domain** — без импортов из `redis/`, `speech/`, `aiohttp`, `chat/`, `streamer/`
+- **Service** — зависит от domain и абстракций инфраструктуры (протоколы, интерфейсы), не от конкретных HTTP/Redis-деталей внутри domain
+- **Infrastructure** — реализует порты; не импортирует service/domain для бизнес-решений
+- **Entry/API** — тонкий слой: DI, wiring, запуск; без бизнес-логики
+
+## Best practices
+
+- Передавай зависимости через конструктор (DI), не создавай глобальные синглтоны в domain
+- DTO/схемы API не протекай в domain — маппинг на границе слоя
+- Конфиг (`core/config.py`) читай только в entry point и infrastructure, не в domain
+- Ошибки инфраструктуры оборачивай на границе слоя; domain бросает доменные исключения
+- Новый код — в правильный слой; при рефакторинге не смешивай ответственности «заодно»

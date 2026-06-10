@@ -1,75 +1,110 @@
-import aiohttp
+import asyncio
 import logging
 from typing import Optional
-import asyncio
-import os
-from core.config import Config
 
+import aiohttp
+
+from core.config import Config
+from core.metrics import metrics
 
 logger = logging.getLogger(__name__)
 
 
 class LLMTextGenerator:
-    """
-    Генерирует текст на основе prompt с использованием F5AI API.
-    Args:
-        prompt: str - текст, на основе которого будет генерироваться текст
-        session: aiohttp.ClientSession - сессия для выполнения запросов
-    Returns:
-        Optional[str] - сгенерированный текст или None, если произошла ошибка
-    """
+    """Генерирует текст через OpenRouter или F5AI (OpenAI-compatible API)."""
+
+    _semaphore: asyncio.Semaphore | None = None
+
     def __init__(self):
-        self.F5AI_API_TOKEN = Config.F5AI_API_TOKEN
-        self.F5AI_MODEL = Config.F5AI_MODEL
-        self.F5AI_API_URL = Config.F5AI_API_URL
+        self._provider = Config.llm_provider()
+        self._api_url = Config.llm_api_url()
+        self._model = Config.llm_model()
+        self._headers = Config.llm_headers()
+        logger.info("LLM: %s, model=%s", self._provider, self._model)
+        if LLMTextGenerator._semaphore is None:
+            LLMTextGenerator._semaphore = asyncio.Semaphore(Config.AI_MAX_CONCURRENCY)
 
-    async def generate_text(self, prompt: str, session: aiohttp.ClientSession) -> Optional[str]:
-        if not self.F5AI_API_URL:
-            logger.error('F5AI_API_URL не установлен')
+    @classmethod
+    def _truncate_prompt(cls, prompt: str) -> str:
+        if len(prompt) <= Config.AI_MAX_INPUT_CHARS:
+            return prompt
+        logger.warning(
+            "Промпт обрезан: %s -> %s символов",
+            len(prompt),
+            Config.AI_MAX_INPUT_CHARS,
+        )
+        return prompt[: Config.AI_MAX_INPUT_CHARS]
+
+    async def generate_text(
+        self,
+        prompt: str,
+        session: aiohttp.ClientSession,
+        *,
+        max_tokens: int | None = None,
+    ) -> Optional[str]:
+        if not self._api_url:
+            logger.error("LLM API URL не установлен (provider=%s)", self._provider)
             return None
-            
-        headers = {
-            'Content-Type': 'application/json',
-            'X-Auth-Token': self.F5AI_API_TOKEN,
-        }
+
+        prompt = self._truncate_prompt(prompt)
         data = {
-            'model': self.F5AI_MODEL,
-            'max_tokens': 4000,
-            'messages': [
-                {'role': 'user', 'content': prompt}
-            ]
+            "model": self._model,
+            "max_tokens": max_tokens if max_tokens is not None else Config.AI_MAX_OUTPUT_TOKENS,
+            "messages": [{"role": "user", "content": prompt}],
         }
-        retries = 0
-        while retries < 5:
-            try:
-                async with session.post(self.F5AI_API_URL, headers=headers, json=data, timeout=30) as resp:
-                    if resp.status == 200:
-                        result = await resp.json()
-                        return result['choices'][0]['message']['content']
-                    elif resp.status in (429, 502):
-                        logger.warning(f'F5AI API вернул {resp.status}, попытка {retries+1}')
-                        await asyncio.sleep(2 ** retries)
-                        retries += 1
-                    else:
-                        logger.error(f'Ошибка F5AI API: {resp.status} {await resp.text()}')
+
+        async with self._semaphore:
+            metrics.ai_requests_total += 1
+            retries = 0
+            while retries <= Config.AI_MAX_RETRIES:
+                try:
+                    async with session.post(
+                        self._api_url,
+                        headers=self._headers,
+                        json=data,
+                        timeout=Config.AI_REQUEST_TIMEOUT_SECONDS,
+                    ) as resp:
+                        if resp.status == 200:
+                            result = await resp.json()
+                            return result["choices"][0]["message"]["content"]
+                        if resp.status in (429, 500, 502, 503, 504):
+                            metrics.ai_errors_total += 1
+                            logger.warning(
+                                "%s API вернул %s, попытка %s/%s",
+                                self._provider,
+                                resp.status,
+                                retries + 1,
+                                Config.AI_MAX_RETRIES + 1,
+                            )
+                            if retries >= Config.AI_MAX_RETRIES:
+                                break
+                            await asyncio.sleep(2**retries)
+                            retries += 1
+                            continue
+                        metrics.ai_errors_total += 1
+                        logger.error(
+                            "Ошибка %s API: %s %s",
+                            self._provider,
+                            resp.status,
+                            await resp.text(),
+                        )
                         break
-            except asyncio.TimeoutError:
-                logger.warning('Таймаут запроса к F5AI API, повтор...')
-                await asyncio.sleep(2 ** retries)
-                retries += 1
-            except Exception as e:
-                logger.error(f'Ошибка при запросе к F5AI API: {e}')
-                break
+                except asyncio.TimeoutError:
+                    metrics.ai_errors_total += 1
+                    logger.warning(
+                        "Таймаут запроса к %s (%ss), попытка %s/%s",
+                        self._provider,
+                        Config.AI_REQUEST_TIMEOUT_SECONDS,
+                        retries + 1,
+                        Config.AI_MAX_RETRIES + 1,
+                    )
+                    if retries >= Config.AI_MAX_RETRIES:
+                        break
+                    await asyncio.sleep(2**retries)
+                    retries += 1
+                except Exception as e:
+                    metrics.ai_errors_total += 1
+                    logger.error("Ошибка при запросе к %s API: %s", self._provider, e)
+                    break
+
         return None
-
-
-
-if __name__ == '__main__':
-    import asyncio
-    async def main():
-        text_generator = LLMTextGenerator()
-        session = aiohttp.ClientSession()
-        prompt = 'Ты - подкастер на твиче, который ведет бесконечный философский стрим. Сгенерируй текст на какую-либо тему по философии, а в конце припиши промпт для следующего запроса тебе, который я буду присылать тебе дальше. В итоге должен получиться связный и интересный текст.'
-        result = await text_generator.generate_text(prompt, session)
-        print(result)
-    asyncio.run(main())

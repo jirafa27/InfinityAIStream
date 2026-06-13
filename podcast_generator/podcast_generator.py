@@ -23,6 +23,7 @@ from podcast_generator.build_prompts import PromptsBuilder
 from podcast_generator.topic_rules import (
     decode_topic_list,
     is_topic_repeated,
+    pick_fallback_topic,
     strip_topic_markers,
 )
 
@@ -72,6 +73,50 @@ class PodcastGenerator:
         logger.info("Синхронизирована тема: %s", self._current_topic)
         return True
 
+    async def _generate_opening_topic(self, session) -> str:
+        recent_topics = decode_topic_list(
+            await self.redis_manager.get_podcast_topics()
+        )
+        prompt = self.prompts_builder.build_prompt_for_initial_topic(recent_topics)
+        for attempt in range(2):
+            raw = await self.llm.generate_text(prompt, session)
+            if not raw:
+                continue
+            _, topic = self.extract_new_topic_and_text(raw)
+            if not topic:
+                first_line = raw.strip().splitlines()[0]
+                topic = self._normalize_topic(
+                    re.sub(
+                        r"^[\*_#\s]*(?:НОВАЯ|Следующая)\s+ТЕМА[\*_\s]*\s*[:\-—]\s*",
+                        "",
+                        first_line,
+                        flags=re.IGNORECASE,
+                    )
+                )
+            if topic and len(topic) >= 3 and not is_topic_repeated(
+                topic, recent_topics
+            ):
+                return topic
+            if attempt == 0:
+                logger.warning("LLM не предложил стартовую тему, повтор запроса")
+
+        fallback = pick_fallback_topic(recent_topics)
+        if fallback:
+            logger.info("Стартовая тема из резервного списка: %s", fallback)
+        return fallback
+
+    async def _ensure_opening_topic(self, session) -> None:
+        if self._current_topic.strip():
+            return
+        topic = await self._generate_opening_topic(session)
+        if not topic:
+            logger.error("Не удалось сгенерировать стартовую тему")
+            return
+        self._current_topic = topic
+        await self.topic_store.set_current_topic(topic, notify=False)
+        await self.redis_manager.add_podcast_topic(topic)
+        logger.info("Стартовая тема (AI): %s", topic)
+
     async def _has_pending_chat(self) -> bool:
         return await self.redis_manager.get_chat_messages_queue_length() > 0
 
@@ -90,6 +135,7 @@ class PodcastGenerator:
         """Основной цикл генерации подкастов"""
         self._current_topic = await self.topic_store.get_current_topic()
         self._last_topic_revision = await self.topic_store.get_topic_revision()
+        await self._ensure_opening_topic(session)
         chat_task = asyncio.create_task(self._chat_watch_loop(session))
         try:
             while not app_state.shutting_down:
@@ -100,7 +146,10 @@ class PodcastGenerator:
                 await self._sync_external_topic()
 
                 if not self._current_topic.strip():
-                    self._current_topic = await self.topic_store.get_current_topic()
+                    await self._ensure_opening_topic(session)
+                    if not self._current_topic.strip():
+                        await asyncio.sleep(Config.STREAMER_POLL_INTERVAL)
+                        continue
 
                 pending = await self.topic_store.consume_pending_topic()
                 if pending:
@@ -350,12 +399,20 @@ class PodcastGenerator:
         fresh_prompt = self.prompts_builder.build_prompt_for_fresh_topic(
             anchor_topic, recent_topics
         )
-        raw = await self.llm.generate_text(fresh_prompt, session)
-        if not raw:
-            return ""
-        _, fresh_topic = self.extract_new_topic_and_text(raw)
-        if fresh_topic and not is_topic_repeated(fresh_topic, recent_topics):
-            return fresh_topic
+        for attempt in range(2):
+            raw = await self.llm.generate_text(fresh_prompt, session)
+            if not raw:
+                continue
+            _, fresh_topic = self.extract_new_topic_and_text(raw)
+            if fresh_topic and not is_topic_repeated(fresh_topic, recent_topics):
+                return fresh_topic
+            if attempt == 0:
+                logger.warning("LLM не предложил уникальную тему, повтор запроса")
+
+        fallback = pick_fallback_topic(recent_topics)
+        if fallback:
+            logger.info("Следующая тема из резервного списка: %s", fallback)
+            return fallback
 
         logger.warning("Не удалось подобрать уникальную тему")
         return ""

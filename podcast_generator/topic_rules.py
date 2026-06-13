@@ -61,6 +61,27 @@ def is_topic_repeated(new_topic: str, recent_topics: list[str]) -> bool:
     return any(topics_are_similar(new_topic, old) for old in recent_topics)
 
 
+FALLBACK_TOPICS: tuple[str, ...] = (
+    "Свобода воли — иллюзия или нет?",
+    "Зачем современному человеку скука?",
+    "Можно ли быть счастливым без целей?",
+    "Что такое честность в эпоху соцсетей?",
+    "Почему мы боимся тишины?",
+    "Смысл жизни без религии",
+    "Дружба или взаимная выгода?",
+    "Как отличить мнение от знания?",
+    "Зачем нужны правила, если все их нарушают?",
+    "Что важнее — правда или комфорт?",
+)
+
+
+def pick_fallback_topic(recent_topics: list[str]) -> str:
+    for topic in FALLBACK_TOPICS:
+        if not is_topic_repeated(topic, recent_topics):
+            return topic
+    return ""
+
+
 def strip_topic_markers(text: str) -> str:
     text = (text or "").strip()
     if not text:

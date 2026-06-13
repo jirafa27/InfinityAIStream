@@ -37,40 +37,16 @@ def apply_edge_fade(
 
 
 class _PersistentPlayer:
-    """Один OutputStream на процесс — без щелчков при смене предложений."""
+    """Воспроизведение через sd.play — совместимо с WDM-KS (blocking OutputStream не работает)."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._stream: sd.OutputStream | None = None
-        self._sample_rate: int | None = None
         self._stop_requested = False
 
-    def _close_stream(self) -> None:
-        if self._stream is None:
-            return
-        try:
-            self._stream.stop()
-            self._stream.close()
-        except Exception:
-            pass
-        self._stream = None
-        self._sample_rate = None
-
-    def _ensure_stream(self, sample_rate: int) -> None:
-        if self._stream is not None and self._sample_rate == sample_rate:
-            return
-        self._close_stream()
-        self._stream = sd.OutputStream(
-            samplerate=sample_rate,
-            channels=1,
-            dtype="float32",
-        )
-        self._stream.start()
-        self._sample_rate = sample_rate
-
     def stop(self) -> None:
-        """Прерывает текущий клип, поток остаётся открытым — без щелчка на стыке."""
+        """Прерывает текущий клип."""
         self._stop_requested = True
+        sd.stop()
 
     def play(self, audio: np.ndarray, sample_rate: int) -> None:
         faded = apply_edge_fade(np.asarray(audio, dtype=np.float32), sample_rate)
@@ -78,19 +54,14 @@ class _PersistentPlayer:
             return
 
         self._stop_requested = False
-        chunk_samples = max(1, int(sample_rate * 0.1))
-        pos = 0
-        while pos < faded.size:
-            if self._stop_requested:
-                return
-            chunk = faded[pos : pos + chunk_samples]
-            with self._lock:
+        with self._lock:
+            sd.play(faded, sample_rate, blocking=False)
+            stream = sd.get_stream()
+            while stream is not None and stream.active:
                 if self._stop_requested:
+                    sd.stop()
                     return
-                self._ensure_stream(sample_rate)
-                assert self._stream is not None
-                self._stream.write(chunk)
-            pos += chunk_samples
+                time.sleep(0.02)
 
 
 _player = _PersistentPlayer()

@@ -1,4 +1,6 @@
 -r requirements.base.txt
 -r requirements.streamer.txt
 -r requirements.player.txt
+-r requirements.visual.txt
+-r requirements.telegram.txt
 docker>=7.0.0

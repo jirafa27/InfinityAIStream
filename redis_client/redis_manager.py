@@ -197,6 +197,9 @@ class RedisManager:
         """Получить список тем"""
         return await self.redis_client.lrange(self._key("podcast_topics"), 0, -1)
 
+    async def clear_podcast_topics(self) -> None:
+        await self.redis_client.delete(self._key("podcast_topics"))
+
     async def get_ai_pending_count(self) -> int:
         chat_len = await self.get_chat_messages_queue_length()
         return chat_len

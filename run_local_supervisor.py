@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from core.config import Config
+from core.utils import is_tcp_port_in_use
 from redis_client.redis_manager import RedisManager
 from redis_client.stream_control_store import StreamControlStore
 from core.worker_epoch import bump_stream_epoch
@@ -85,6 +86,8 @@ class LocalProcessGroup:
         self._local_podcaster = local_podcaster
         self._local_telegram = local_telegram
         self._telegram_skip_logged = False
+        self._visual_port_external = False
+        self._chat_reader_port_external = False
         self._streamer: subprocess.Popen | None = None
         self._player: subprocess.Popen | None = None
         self._chat_reader: subprocess.Popen | None = None
@@ -136,12 +139,22 @@ class LocalProcessGroup:
         if self._local_chat_reader and (
             self._chat_reader is None or self._chat_reader.poll() is not None
         ):
-            logger.info("Запуск run_chat_reader.py (локальный Twitch bot)")
-            self._chat_reader = subprocess.Popen(
-                [sys.executable, "run_chat_reader.py"],
-                cwd=PROJECT_DIR,
-                env=self._local_env(health_port=LOCAL_HEALTH_PORT_CHAT_READER),
-            )
+            health_host = os.getenv("HEALTH_HOST", "0.0.0.0")
+            if is_tcp_port_in_use(health_host, LOCAL_HEALTH_PORT_CHAT_READER):
+                if not self._chat_reader_port_external:
+                    logger.info(
+                        "Порт %s занят — chat_reader уже работает, не перезапускаю",
+                        LOCAL_HEALTH_PORT_CHAT_READER,
+                    )
+                    self._chat_reader_port_external = True
+            else:
+                self._chat_reader_port_external = False
+                logger.info("Запуск run_chat_reader.py (локальный Twitch bot)")
+                self._chat_reader = subprocess.Popen(
+                    [sys.executable, "run_chat_reader.py"],
+                    cwd=PROJECT_DIR,
+                    env=self._local_env(health_port=LOCAL_HEALTH_PORT_CHAT_READER),
+                )
 
         if self._local_podcaster and (
             self._podcaster is None or self._podcaster.poll() is not None
@@ -189,15 +202,27 @@ class LocalProcessGroup:
             self._player = None
 
         if VISUAL_ENABLED and (self._visual is None or self._visual.poll() is not None):
-            logger.info(
-                "Запуск run_visual.py (жидкость React → OBS Browser Source: %s)",
-                os.getenv("VISUAL_URL", "http://127.0.0.1:8765"),
-            )
-            self._visual = subprocess.Popen(
-                [sys.executable, "run_visual.py"],
-                cwd=PROJECT_DIR,
-                env=self._local_env(),
-            )
+            visual_host = os.getenv("VISUAL_HOST", "127.0.0.1")
+            visual_port = int(os.getenv("VISUAL_PORT", "8765"))
+            if is_tcp_port_in_use(visual_host, visual_port):
+                if not self._visual_port_external:
+                    logger.info(
+                        "Порт %s:%s занят — visual уже работает, не перезапускаю",
+                        visual_host,
+                        visual_port,
+                    )
+                    self._visual_port_external = True
+            else:
+                self._visual_port_external = False
+                logger.info(
+                    "Запуск run_visual.py (жидкость React → OBS Browser Source: %s)",
+                    os.getenv("VISUAL_URL", "http://127.0.0.1:8765"),
+                )
+                self._visual = subprocess.Popen(
+                    [sys.executable, "run_visual.py"],
+                    cwd=PROJECT_DIR,
+                    env=self._local_env(),
+                )
         elif not VISUAL_ENABLED and self._visual is not None and self._visual.poll() is None:
             self._stop_proc("visual", self._visual)
             self._visual = None
@@ -228,6 +253,8 @@ class LocalProcessGroup:
         self._streamer = None
         self._player = None
         self._visual = None
+        self._visual_port_external = False
+        self._chat_reader_port_external = False
 
     def stop(self) -> None:
         self.stop_stream()

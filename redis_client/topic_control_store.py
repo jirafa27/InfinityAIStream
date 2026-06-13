@@ -28,7 +28,10 @@ class TopicControlStore:
 
     async def get_current_topic(self) -> str:
         value = self._decode(await self._redis.get(self._key(self._CURRENT)))
-        return value.strip() if value and value.strip() else DEFAULT_TOPIC
+        return value.strip() if value and value.strip() else ""
+
+    async def clear_current_topic(self) -> None:
+        await self._redis.delete(self._key(self._CURRENT))
 
     async def set_current_topic(self, topic: str, *, notify: bool = True) -> None:
         topic = topic.strip()

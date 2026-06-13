@@ -2,7 +2,7 @@ import logging
 import os
 
 from redis_client.redis_manager import RedisManager
-from redis_client.topic_control_store import DEFAULT_TOPIC, TopicControlStore
+from redis_client.topic_control_store import TopicControlStore
 from redis_client.visual_overlay_store import VisualOverlayStore
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,8 @@ async def reset_stream_on_start(
     stop_audio()
 
     if reset_topic:
-        await topic_store.set_current_topic(DEFAULT_TOPIC, notify=False)
+        await topic_store.clear_current_topic()
+        await redis_manager.clear_podcast_topics()
         await topic_store.bump_revision()
         await topic_store.clear_manual_topic_lock()
 
@@ -50,5 +51,5 @@ async def reset_stream_on_start(
         dropped_podcast,
         dropped_reacted,
         dropped_chat,
-        DEFAULT_TOPIC if reset_topic else "(без изменений)",
+        "AI при старте podcaster" if reset_topic else "(без изменений)",
     )

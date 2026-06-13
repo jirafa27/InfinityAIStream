@@ -1,5 +1,17 @@
 import re
+import socket
 from transliterate import translit
+
+
+def is_tcp_port_in_use(host: str, port: int) -> bool:
+    """True, если порт уже занят (слушает другой процесс)."""
+    check_host = "127.0.0.1" if host in ("0.0.0.0", "", "::") else host
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((check_host, port))
+            return False
+        except OSError:
+            return True
 
 
 def transliterate_and_replace_symbols(text):

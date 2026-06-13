@@ -23,6 +23,16 @@ class PromptsBuilder:
             f"Без markdown. Только текст монолога."
         )
 
+    def build_prompt_for_initial_topic(self, recent_topics: list[str]) -> str:
+        banned = format_banned_topics(recent_topics)
+        return (
+            "Ты готовишь философский стендап-стрим для Twitch.\n"
+            f"Запрещённые темы (уже были, нельзя повторять):\n{banned}\n\n"
+            "Придумай одну яркую оригинальную тему для первого монолога этого эфира. "
+            "Тема — один короткий вопрос или утверждение, понятный широкой аудитории.\n"
+            "Ответь строго одной строкой: НОВАЯ ТЕМА: название"
+        )
+
     def build_prompt_for_fresh_topic(
         self, current_topic: str, recent_topics: list[str]
     ) -> str:

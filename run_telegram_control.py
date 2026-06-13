@@ -51,14 +51,10 @@ def _probe_local_proxy() -> str | None:
 
 
 def _telegram_proxy() -> str | None:
-    explicit = (
-        os.getenv("TELEGRAM_PROXY")
-        or os.getenv("HTTPS_PROXY")
-        or os.getenv("ALL_PROXY")
-    )
+    explicit = os.getenv("TELEGRAM_PROXY", "").strip()
     if explicit:
         return explicit
-    if os.getenv("TELEGRAM_AUTO_PROXY", "1") != "0":
+    if os.getenv("TELEGRAM_AUTO_PROXY", "0") == "1":
         return _probe_local_proxy()
     return None
 
@@ -74,8 +70,8 @@ def _create_bot(token: str) -> Bot:
         logger.info("Telegram API через proxy: %s", proxy)
         return Bot(token=token, session=AiohttpSession(proxy=proxy))
     logger.warning(
-        "Прокси не найден — aiohttp может не достучаться до api.telegram.org. "
-        "Задайте TELEGRAM_PROXY=socks5://127.0.0.1:10808 в .env"
+        "Telegram без прокси — если api.telegram.org недоступен, "
+        "задайте TELEGRAM_PROXY=socks5://127.0.0.1:10808 в .env"
     )
     return Bot(token=token)
 

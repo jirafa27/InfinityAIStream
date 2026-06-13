@@ -269,7 +269,7 @@ class SpeechSynthesizer:
             raise OSError("Недостаточно места на диске для TTS-файла")
         os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
         part_path = f"{file_path}.part"
-        audio_int16 = (audio_array * 32767).astype(np.int16)
+        audio_int16 = (np.clip(audio_array, -1.0, 1.0) * 32767).astype(np.int16)
         with wave.open(part_path, "w") as wav_file:
             wav_file.setnchannels(1)
             wav_file.setsampwidth(2)

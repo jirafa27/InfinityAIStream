@@ -1,11 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
+import { KaleidoscopeCanvas } from "./components/KaleidoscopeCanvas";
 import { LiquidFlowCanvas } from "./components/LiquidFlowCanvas";
+import { StreamerAvatar } from "./components/StreamerAvatar";
 import { VisualOverlay } from "./components/VisualOverlay";
 import { useAudioSync } from "./hooks/useAudioSync";
 import { useVisualOverlay } from "./hooks/useVisualOverlay";
 import { useVisualState } from "./hooks/useVisualState";
 import { fetchVisualConfig, modeFromQuery } from "./lib/config";
 import { getComplexitySettings, parseComplexity } from "./lib/complexity";
+import {
+  ENABLE_AVATAR_VISUAL,
+  ENABLE_KALEIDOSCOPE_VISUAL,
+  ENABLE_LIQUID_VISUAL,
+} from "./lib/featureFlags";
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -37,7 +44,11 @@ export default function App() {
   );
 
   const { volume, moodOverride } = useAudioSync(mode, playAudio, targetFps);
-  const visual = useVisualState(volume, moodOverride, smoothing);
+  const visual = useVisualState(
+    ENABLE_LIQUID_VISUAL ? volume : 0,
+    ENABLE_LIQUID_VISUAL ? moodOverride : null,
+    smoothing,
+  );
   const overlay = useVisualOverlay();
 
   if (error) {
@@ -52,7 +63,11 @@ export default function App() {
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <LiquidFlowCanvas visual={visual} complexity={complexity} />
+      {ENABLE_LIQUID_VISUAL && (
+        <LiquidFlowCanvas visual={visual} complexity={complexity} />
+      )}
+      {ENABLE_AVATAR_VISUAL && <StreamerAvatar volume={volume} />}
+      {ENABLE_KALEIDOSCOPE_VISUAL && <KaleidoscopeCanvas volume={volume} />}
       <VisualOverlay overlay={overlay} />
     </div>
   );

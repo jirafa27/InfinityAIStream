@@ -9,7 +9,7 @@ import sounddevice as sd
 
 logger = logging.getLogger(__name__)
 
-FADE_MS = 12.0
+FADE_MS = 35.0
 
 
 def apply_edge_fade(
@@ -68,6 +68,10 @@ class _PersistentPlayer:
         self._stream.start()
         self._sample_rate = sample_rate
 
+    def stop(self) -> None:
+        """Прерывает текущий клип, поток остаётся открытым — без щелчка на стыке."""
+        self._stop_requested = True
+
     def play(self, audio: np.ndarray, sample_rate: int) -> None:
         faded = apply_edge_fade(np.asarray(audio, dtype=np.float32), sample_rate)
         if faded.size == 0:
@@ -86,13 +90,7 @@ class _PersistentPlayer:
                 self._ensure_stream(sample_rate)
                 assert self._stream is not None
                 self._stream.write(chunk)
-            time.sleep(len(chunk) / sample_rate)
             pos += chunk_samples
-
-    def stop(self) -> None:
-        self._stop_requested = True
-        with self._lock:
-            self._close_stream()
 
 
 _player = _PersistentPlayer()

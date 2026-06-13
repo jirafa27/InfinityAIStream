@@ -61,7 +61,7 @@ class Config:
     # TTS
     TTS_OUTPUT_MODE = os.getenv("TTS_OUTPUT_MODE", "speaker")
     TTS_OUTPUT_DIR = os.getenv("TTS_OUTPUT_DIR", "output/tts")
-    TTS_SPEAKER = os.getenv("TTS_SPEAKER", "eugene")
+    TTS_SPEAKER = os.getenv("TTS_SPEAKER", "baya")
     TTS_SAMPLE_RATE = int(os.getenv("TTS_SAMPLE_RATE", "48000"))
     TTS_MAX_CONCURRENCY = int(os.getenv("TTS_MAX_CONCURRENCY", 1))
     TTS_QUEUE_MAX_SIZE = int(os.getenv("TTS_QUEUE_MAX_SIZE", 10))

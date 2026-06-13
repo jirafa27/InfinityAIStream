@@ -1,6 +1,7 @@
 import logging
 import os
 
+from redis_client.prepared_monologue_store import PreparedMonologueStore
 from redis_client.redis_manager import RedisManager
 from redis_client.topic_control_store import TopicControlStore
 from redis_client.visual_overlay_store import VisualOverlayStore
@@ -27,11 +28,15 @@ async def reset_stream_on_start(
 
     topic_store = TopicControlStore(redis_manager.redis_client)
     overlay = VisualOverlayStore(redis_manager.redis_client)
+    prepared = PreparedMonologueStore(redis_manager.redis_client)
 
     dropped_podcast, dropped_reacted, dropped_chat = await clear_tts_queues(
         redis_manager
     )
     await overlay.clear_chat_overlay()
+    await overlay.clear_page_image()
+    await overlay.clear_page_quote()
+    await prepared.clear()
     await topic_store.clear_pending_topic()
     await redis_manager.set_tts_busy(False)
     await redis_manager.set_chat_processing(False)

@@ -38,12 +38,17 @@ async def handle_health(_request: web.Request) -> web.Response:
 async def handle_overlay(request: web.Request) -> web.Response:
     redis_manager: RedisManager | None = request.app.get("redis_manager")
     if redis_manager is None or redis_manager.redis_client is None:
-        return web.json_response({"topic": "", "chat": None})
+        return web.json_response({"topic": "", "imageUrl": "", "quote": "", "chat": None})
 
     topic_store = TopicControlStore(redis_manager.redis_client)
     overlay_store = VisualOverlayStore(redis_manager.redis_client)
     try:
         topic = await topic_store.get_current_topic()
+        image_url = await overlay_store.get_page_image() or ""
+        quote = await overlay_store.get_page_quote() or ""
+        if not quote:
+            topic = ""
+            image_url = ""
         chat_active = (
             await redis_manager.get_reacted_to_chat_messages_queue_length() > 0
             or await redis_manager.is_chat_processing()
@@ -53,9 +58,9 @@ async def handle_overlay(request: web.Request) -> web.Response:
             await overlay_store.clear_chat_overlay()
     except Exception:
         logger.exception("Ошибка чтения overlay из Redis")
-        return web.json_response({"topic": "", "chat": None})
+        return web.json_response({"topic": "", "imageUrl": "", "quote": "", "chat": None})
 
-    return web.json_response({"topic": topic, "chat": chat})
+    return web.json_response({"topic": topic, "imageUrl": image_url, "quote": quote, "chat": chat})
 
 
 async def handle_config(_request: web.Request) -> web.Response:

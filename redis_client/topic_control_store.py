@@ -1,6 +1,6 @@
 from core.config import Config
 
-DEFAULT_TOPIC = "Зачем философия современному человеку?"
+DEFAULT_TOPIC = "Цитаты известных людей"
 
 
 class TopicControlStore:
@@ -11,6 +11,7 @@ class TopicControlStore:
     _NOTIFY = "control:topic_notifications"
     _REVISION = "control:topic_revision"
     _MANUAL_REV = "control:topic_manual_revision"
+    _MANUAL_PERSON = "control:manual_person"
 
     def __init__(self, redis_client) -> None:
         self._redis = redis_client
@@ -87,16 +88,35 @@ class TopicControlStore:
     async def clear_manual_topic_lock(self) -> None:
         await self._redis.delete(self._key(self._MANUAL_REV))
 
+    async def get_manual_person(self) -> str:
+        value = self._decode(await self._redis.get(self._key(self._MANUAL_PERSON)))
+        return value.strip() if value and value.strip() else ""
+
+    async def set_manual_person(self, person: str) -> None:
+        await self._redis.set(self._key(self._MANUAL_PERSON), person.strip())
+
+    async def clear_manual_person(self) -> None:
+        await self._redis.delete(self._key(self._MANUAL_PERSON))
+
     async def is_manual_topic_active(self) -> bool:
         manual_rev = await self.get_manual_topic_revision()
         if manual_rev is None:
             return False
         return await self.get_topic_revision() == manual_rev
 
-    async def apply_topic_now(self, topic: str) -> int:
-        """Сразу меняет текущую тему (экран + следующий монолог)."""
+    async def release_to_random_authors(self) -> int:
+        """Сбрасывает ручной выбор автора — снова случайные персоналии."""
         await self.clear_pending_topic()
-        await self.set_current_topic(topic.strip(), notify=True)
+        await self.clear_current_topic()
+        await self.clear_manual_person()
+        await self.clear_manual_topic_lock()
+        return await self.bump_revision()
+
+    async def apply_topic_now(self, topic: str) -> int:
+        """Запрашивает автора для следующего монолога; на экран — после фильтров."""
+        await self.clear_pending_topic()
+        await self.clear_current_topic()
+        await self.set_manual_person(topic)
         rev = await self.bump_revision()
         await self._redis.set(self._key(self._MANUAL_REV), rev)
         return rev

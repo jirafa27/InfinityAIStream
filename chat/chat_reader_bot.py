@@ -12,7 +12,12 @@ from core.logger import logger as app_logger
 from core.shutdown import shutdown
 from redis_client.redis_manager import RedisManager
 from redis_client.chat_outbound_store import ChatOutboundStore
-from redis_client.topic_apply import apply_topic_with_interrupt
+from podcast_generator.manual_topic_preflight import manual_topic_rejection_message
+from redis_client.topic_apply import (
+    apply_random_authors_with_interrupt,
+    apply_topic_if_quotes_available,
+)
+from podcast_generator.topic_rules import is_random_author_mode
 from redis_client.topic_control_store import TopicControlStore
 from twitch_irc import TwitchIrcReader
 from twitch_token_manager import TokenManager
@@ -73,18 +78,44 @@ class ChatReaderService:
             if not topic:
                 logger.info("Пустой set_topic от %s", author)
                 await self._reply_in_chat(
-                    "Использование: !set_topic Ваш текст темы "
-                    "(слэш / не работает в Twitch-чате)"
+                    "Использование: !set_topic Имя автора на Викицитатах "
+                    "(например: !set_topic Сенека). !set_topic сброс — случайные авторы. "
+                    "Слэш / в Twitch не работает."
                 )
                 return
-            dropped = await apply_topic_with_interrupt(
+            if is_random_author_mode(topic):
+                dropped = await apply_random_authors_with_interrupt(
+                    self.topic_store,
+                    self.redis_manager,
+                    announce_in_chat=True,
+                )
+                logger.info(
+                    "Сброс автора из Twitch [%s] (очередь комментария: -%s)",
+                    author,
+                    dropped,
+                )
+                app_state.touch_heartbeat()
+                return
+            applied, dropped, reason = await apply_topic_if_quotes_available(
                 self.topic_store,
                 self.redis_manager,
                 topic,
                 announce_in_chat=True,
             )
+            if not applied:
+                logger.info(
+                    "Страница из Twitch [%s] отклонена (%s): %s",
+                    author,
+                    reason,
+                    topic,
+                )
+                await self._reply_in_chat(
+                    manual_topic_rejection_message(topic, reason)
+                )
+                app_state.touch_heartbeat()
+                return
             logger.info(
-                "Тема из Twitch [%s]: %s (очередь монолога: -%s)",
+                "Страница из Twitch [%s]: %s (очередь комментария: -%s)",
                 author,
                 topic,
                 dropped,

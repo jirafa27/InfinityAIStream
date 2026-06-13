@@ -1,7 +1,7 @@
 from core.config import Config
 
-_TOPIC_HINT = "Чтобы изменить тему напишите !set_topic НАЗВАНИЕ ТЕМЫ"
-_TOPIC_PREFIX = "Следующая тема: "
+_PERSON_HINT = "Автор: !set_topic ИМЯ | сброс: !set_topic сброс"
+_QUOTE_PREFIX = "Следующая цитата: "
 
 
 class ChatOutboundStore:
@@ -22,13 +22,22 @@ class ChatOutboundStore:
         await self._redis.lpush(self._key(), text[:500])
         await self._redis.ltrim(self._key(), 0, 49)
 
-    async def enqueue_topic_announcement(self, topic: str) -> None:
-        topic = topic.strip()
-        if not topic:
+    async def enqueue_quote_announcement(self, person: str, quote: str) -> None:
+        person = person.strip()
+        quote = quote.strip()
+        if not person or not quote:
             return
-        max_topic = max(1, 500 - len(_TOPIC_PREFIX))
-        await self.enqueue(f"{_TOPIC_PREFIX}{topic[:max_topic]}")
-        await self.enqueue(_TOPIC_HINT)
+        short_quote = quote if len(quote) <= 180 else f"{quote[:177]}…"
+        line = f"{_QUOTE_PREFIX}{person}: «{short_quote}»"
+        await self.enqueue(line[:500])
+        await self.enqueue(_PERSON_HINT)
+
+    async def enqueue_page_announcement(self, page_title: str) -> None:
+        await self.enqueue_quote_announcement(page_title, "…")
+
+    async def enqueue_topic_announcement(self, topic: str) -> None:
+        await self.enqueue(f"Следующая случайная цитата: {topic.strip()[:400]}")
+        await self.enqueue(_PERSON_HINT)
 
     async def clear(self) -> None:
         await self._redis.delete(self._key())

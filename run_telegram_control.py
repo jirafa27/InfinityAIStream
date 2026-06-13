@@ -15,7 +15,12 @@ from dotenv import load_dotenv
 from redis_client.chat_notify_store import ChatNotifyStore
 from redis_client.redis_manager import RedisManager
 from redis_client.stream_control_store import StreamControlStore
-from redis_client.topic_apply import apply_topic_with_interrupt
+from redis_client.topic_apply import (
+    apply_random_authors_with_interrupt,
+    apply_topic_if_quotes_available,
+)
+from podcast_generator.manual_topic_preflight import manual_topic_rejection_message
+from podcast_generator.topic_rules import is_random_author_mode
 from redis_client.topic_control_store import TopicControlStore
 from obs.obs_signal_service import ObsSignalService
 from stream_control.docker_compose_runner import DockerContainerRunner
@@ -171,7 +176,7 @@ async def _topic_notify_loop(
             topic = await topic_store.pop_notification()
             if topic:
                 await _notify_allowed_users(
-                    bot, allowed, f"Текущая тема: {topic}",
+                    bot, allowed, f"Текущая страница: {topic}",
                 )
             else:
                 await asyncio.sleep(interval)
@@ -225,8 +230,8 @@ async def main() -> None:
             "/start_stream — запуск стрима\n"
             "/stop_stream — остановка\n"
             "/status — состояние контейнеров\n"
-            "/topic — текущая и следующая тема\n"
-            "/set_topic Текст — сразу сменить тему эфира"
+            "/page — текущая страница викицитат\n"
+            "/set_topic Название — запросить страницу с Викицитат"
         )
 
     @dp.message(Command("start_stream"))
@@ -260,12 +265,19 @@ async def main() -> None:
             return
         current = await topic_store.get_current_topic()
         pending = await topic_store.get_pending_topic()
-        lines = [f"Текущая тема:\n{current}"]
+        manual = await topic_store.get_manual_person()
+        lines = [f"На экране:\n{current or '—'}"]
+        if manual and await topic_store.is_manual_topic_active():
+            lines.append(f"\nЗапрошен автор:\n{manual}")
         if pending:
-            lines.append(f"\nСледующая (из Telegram):\n{pending}")
-        else:
-            lines.append("\nСледующая тема не задана — будет от LLM.")
+            lines.append(f"\nОжидает применения:\n{pending}")
+        elif not manual:
+            lines.append("\nСледующая не задана — будет случайная страница викицитат.")
         await message.answer("\n".join(lines))
+
+    @dp.message(Command("page"))
+    async def cmd_page(message: Message) -> None:
+        await cmd_topic(message)
 
     @dp.message(Command("set_topic"))
     async def cmd_set_topic(message: Message) -> None:
@@ -274,16 +286,34 @@ async def main() -> None:
         raw = message.text or ""
         parts = raw.split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
-            await message.answer("Использование:\n/set_topic Ваш текст темы")
+            await message.answer(
+                "Использование:\n/set_topic Название страницы на Викицитатах"
+            )
             return
         topic = parts[1].strip()[:500]
-        dropped = await apply_topic_with_interrupt(
+        if is_random_author_mode(topic):
+            dropped = await apply_random_authors_with_interrupt(
+                topic_store, redis_manager
+            )
+            logger.info("Сброс автора из Telegram (очередь: -%s)", dropped)
+            await message.answer("Снова случайные авторы.")
+            obs_signals.signal_telegram_command(_command_name(message))
+            return
+        applied, dropped, reason = await apply_topic_if_quotes_available(
             topic_store, redis_manager, topic
         )
-        logger.info("Тема из Telegram: %s (очередь монолога: -%s)", topic, dropped)
+        if not applied:
+            logger.info(
+                "Страница из Telegram отклонена (%s): %s",
+                reason,
+                topic,
+            )
+            await message.answer(manual_topic_rejection_message(topic, reason))
+            return
+        logger.info("Страница из Telegram: %s (очередь: -%s)", topic, dropped)
         await message.answer(
-            f"Тема эфира изменена:\n<b>{topic}</b>\n\n"
-            "На экране и в следующем монологе.",
+            f"Запрошена случайная цитата:\n<b>{topic}</b>\n\n"
+            "Следующий монолог — случайная цитата этого автора.",
             parse_mode="HTML",
         )
         obs_signals.signal_telegram_command(_command_name(message))

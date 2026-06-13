@@ -1,10 +1,12 @@
 import asyncio
+import time
 
 from core.app_state import app_state
 from core.worker_epoch import retire_stale_worker
 from core.config import Config
 from core.disk_guard import DiskGuard
 from core.logger import logger
+from core.chat_queue import has_actionable_chat_messages
 from redis_client.redis_manager import RedisManager
 from redis_client.topic_control_store import TopicControlStore
 from redis_client.visual_overlay_store import VisualOverlayStore
@@ -25,6 +27,34 @@ class Streamer:
         self._file_output = Config.TTS_OUTPUT_MODE == "file"
         self._tts_lock = asyncio.Semaphore(Config.TTS_MAX_CONCURRENCY)
         self._cleanup_interval = max(60, Config.TTS_TEMP_MAX_AGE_MINUTES * 30)
+        self._reacted_stale_since: float | None = None
+
+    async def _recover_stale_reacted_queue(self) -> None:
+        length = await self.redis_manager.get_reacted_to_chat_messages_queue_length()
+        if length <= 0:
+            self._reacted_stale_since = None
+            return
+        if await self.redis_manager.is_tts_busy():
+            self._reacted_stale_since = None
+            return
+
+        now = time.time()
+        if self._reacted_stale_since is None:
+            self._reacted_stale_since = now
+            return
+
+        stale_for = now - self._reacted_stale_since
+        if stale_for < 90:
+            return
+
+        dropped = await self.redis_manager.clear_reacted_to_chat_messages_queue()
+        await self.visual_overlay_store.clear_chat_overlay()
+        self._reacted_stale_since = None
+        logger.warning(
+            "Очередь озвучки чата зависла %ss — очищено %s реплик",
+            int(stale_for),
+            dropped,
+        )
 
     async def _synthesize(self, text: str) -> None:
         """Озвучивает одну реплику (обычно одно предложение из очереди)."""
@@ -49,21 +79,21 @@ class Streamer:
 
     async def _chat_has_priority(self) -> bool:
         return (
-            await self.redis_manager.get_chat_messages_queue_length() > 0
-            or await self.redis_manager.is_chat_processing()
+            await has_actionable_chat_messages(self.redis_manager)
             or await self.redis_manager.get_reacted_to_chat_messages_queue_length() > 0
         )
 
     async def _on_chat_playback_finished(self) -> None:
         """Чат озвучен — убираем оверлей комментария, опционально возвращаемся к теме."""
+        if await self.redis_manager.is_chat_processing():
+            return
+
         await self.visual_overlay_store.clear_chat_overlay()
 
         transition = Config.CHAT_RETURN_TRANSITION
         if not transition:
             return
-        if await self.redis_manager.get_chat_messages_queue_length() > 0:
-            return
-        if await self.redis_manager.is_chat_processing():
+        if await has_actionable_chat_messages(self.redis_manager):
             return
         if await self.redis_manager.get_reacted_to_chat_messages_queue_length() > 0:
             return
@@ -80,6 +110,7 @@ class Streamer:
                 app_state.touch_heartbeat()
                 if await retire_stale_worker(self.redis_manager, "streamer"):
                     break
+                await self._recover_stale_reacted_queue()
                 processed = False
 
                 while (
@@ -102,6 +133,7 @@ class Streamer:
                         if is_citation and Config.CHAT_TTS_PRE_PAUSE_SECONDS > 0:
                             await asyncio.sleep(Config.CHAT_TTS_PRE_PAUSE_SECONDS)
                         await self._synthesize(text)
+                        self._reacted_stale_since = None
                         remaining = (
                             await self.redis_manager.get_reacted_to_chat_messages_queue_length()
                         )

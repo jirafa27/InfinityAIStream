@@ -7,10 +7,12 @@ export interface ChatOverlay {
 
 export interface VisualOverlayData {
   topic: string;
+  imageUrl: string;
+  quote: string;
   chat: ChatOverlay | null;
 }
 
-const EMPTY: VisualOverlayData = { topic: "", chat: null };
+const EMPTY: VisualOverlayData = { topic: "", imageUrl: "", quote: "", chat: null };
 
 export function useVisualOverlay(pollMs = 800): VisualOverlayData {
   const [data, setData] = useState<VisualOverlayData>(EMPTY);
@@ -24,6 +26,9 @@ export function useVisualOverlay(pollMs = 800): VisualOverlayData {
         if (!res.ok || cancelled) return;
         const raw = (await res.json()) as Partial<VisualOverlayData>;
         const topic = typeof raw.topic === "string" ? raw.topic.trim() : "";
+        const imageUrl =
+          typeof raw.imageUrl === "string" ? raw.imageUrl.trim() : "";
+        const quote = typeof raw.quote === "string" ? raw.quote.trim() : "";
         let chat: ChatOverlay | null = null;
         if (
           raw.chat &&
@@ -37,7 +42,7 @@ export function useVisualOverlay(pollMs = 800): VisualOverlayData {
             chat = { author, content };
           }
         }
-        setData({ topic, chat });
+        setData({ topic, imageUrl, quote, chat });
       } catch {
         /* ignore */
       }

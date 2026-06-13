@@ -90,6 +90,33 @@ class RedisManager:
                 key, payload, Config.TTS_QUEUE_MAX_SIZE * 2
             )
 
+    async def add_podcast_messages(
+        self,
+        messages: list[str],
+        priority: bool = False,
+        *,
+        topic_revision: int = 0,
+    ) -> None:
+        """Добавляет несколько реплик, сохраняя исходный порядок."""
+        if not messages:
+            return
+        key = self._key("podcast_messages_queue")
+        payloads = [
+            self.encode_podcast_message(message, topic_revision)
+            for message in messages
+            if message.strip()
+        ]
+        if not payloads:
+            return
+        if priority:
+            for payload in reversed(payloads):
+                await self.redis_client.lpush(key, payload)
+        else:
+            for payload in payloads:
+                await self._bounded_rpush(
+                    key, payload, Config.TTS_QUEUE_MAX_SIZE * 2
+                )
+
     async def claim_chat_dedupe(self, dedupe_key: str, *, ttl: int = 86400) -> bool:
         """True — сообщение ещё не обрабатывали (атомарно помечает)."""
         key = self._key(f"chat:dedupe:{dedupe_key}")
@@ -155,7 +182,7 @@ class RedisManager:
     async def set_chat_processing(self, active: bool) -> None:
         key = self._key("control:chat_processing")
         if active:
-            await self.redis_client.set(key, "1", ex=600)
+            await self.redis_client.set(key, "1", ex=180)
         else:
             await self.redis_client.delete(key)
 

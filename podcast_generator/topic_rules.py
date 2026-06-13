@@ -96,3 +96,19 @@ def strip_topic_markers(text: str) -> str:
 
     result = "\n".join(line for line in cleaned if line).strip()
     return TOPIC_INLINE_RE.sub("", result).strip()
+
+
+RANDOM_AUTHOR_MODE_ALIASES = frozenset(
+    {
+        "сброс",
+        "random",
+        "случайно",
+        "авто",
+        "reset",
+        "auto",
+    }
+)
+
+
+def is_random_author_mode(topic: str) -> bool:
+    return topic.strip().lower() in RANDOM_AUTHOR_MODE_ALIASES

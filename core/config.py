@@ -38,7 +38,7 @@ class Config:
     AI_MAX_CONTEXT_MESSAGES = int(os.getenv("AI_MAX_CONTEXT_MESSAGES", 15))
     AI_MAX_INPUT_CHARS = int(os.getenv("AI_MAX_INPUT_CHARS", 12000))
     AI_MAX_OUTPUT_TOKENS = int(os.getenv("AI_MAX_OUTPUT_TOKENS", 1024))
-    AI_MAX_CONCURRENCY = int(os.getenv("AI_MAX_CONCURRENCY", 1))
+    AI_MAX_CONCURRENCY = int(os.getenv("AI_MAX_CONCURRENCY", 2))
     AI_QUEUE_MAX_SIZE = int(os.getenv("AI_QUEUE_MAX_SIZE", 20))
     AI_REQUEST_TIMEOUT_SECONDS = int(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", 30))
     AI_MAX_RETRIES = int(os.getenv("AI_MAX_RETRIES", 2))
@@ -53,10 +53,58 @@ class Config:
     CHAT_TTS_PRE_PAUSE_SECONDS = float(os.getenv("CHAT_TTS_PRE_PAUSE_SECONDS", "2"))
     CHAT_TTS_POST_PAUSE_SECONDS = float(os.getenv("CHAT_TTS_POST_PAUSE_SECONDS", "2"))
     CHAT_RETURN_TRANSITION = os.getenv(
-        "CHAT_RETURN_TRANSITION", "Продолжим нашу тему."
+        "CHAT_RETURN_TRANSITION", "Продолжим разбор цитат."
     ).strip()
     CHAT_POLL_INTERVAL_SECONDS = float(os.getenv("CHAT_POLL_INTERVAL_SECONDS", "0.2"))
     MONOLOGUE_MIN_INTERVAL_SECONDS = int(os.getenv("MONOLOGUE_MIN_INTERVAL_SECONDS", 90))
+
+    # Wikiquote (ru.wikiquote.org)
+    WIKIQUOTE_API_BASE = os.getenv(
+        "WIKIQUOTE_API_BASE", "https://ru.wikiquote.org/w/api.php"
+    )
+    WIKIQUOTE_USER_AGENT = os.getenv(
+        "WIKIQUOTE_USER_AGENT",
+        "InfinityAIStream/1.0 (https://ru.wikiquote.org/; local Twitch stream bot)",
+    )
+    WIKIQUOTE_REQUEST_TIMEOUT_SECONDS = int(
+        os.getenv("WIKIQUOTE_REQUEST_TIMEOUT_SECONDS", 20)
+    )
+    WIKIQUOTE_MAX_QUOTES = int(os.getenv("WIKIQUOTE_MAX_QUOTES", 8))
+    WIKIQUOTE_MAX_QUOTE_CHARS = int(os.getenv("WIKIQUOTE_MAX_QUOTE_CHARS", 400))
+    WIKIQUOTE_RANDOM_RETRIES = int(os.getenv("WIKIQUOTE_RANDOM_RETRIES", 6))
+    WIKIQUOTE_RECENT_PAGES_LIMIT = int(os.getenv("WIKIQUOTE_RECENT_PAGES_LIMIT", 20))
+    WIKIQUOTE_PERSON_CATEGORY = os.getenv(
+        "WIKIQUOTE_PERSON_CATEGORY", "Категория:Персоналии по алфавиту"
+    )
+    WIKIQUOTE_PERSON_BATCH_SIZE = int(os.getenv("WIKIQUOTE_PERSON_BATCH_SIZE", 100))
+    WIKIPEDIA_API_BASE = os.getenv(
+        "WIKIPEDIA_API_BASE", "https://ru.wikipedia.org/w/api.php"
+    )
+    WIKIQUOTE_IMAGE_THUMB_SIZE = int(os.getenv("WIKIQUOTE_IMAGE_THUMB_SIZE", 800))
+    WIKIQUOTE_COMMENTARY_MAX_CHARS = int(
+        os.getenv("WIKIQUOTE_COMMENTARY_MAX_CHARS", 500)
+    )
+    WIKIQUOTE_COMMENTARY_MAX_TOKENS = int(
+        os.getenv("WIKIQUOTE_COMMENTARY_MAX_TOKENS", 220)
+    )
+    WIKIQUOTE_PERSON_AI_FILTER = os.getenv("WIKIQUOTE_PERSON_AI_FILTER", "1") == "1"
+    WIKIQUOTE_PERSON_FILTER_MAX_TOKENS = int(
+        os.getenv("WIKIQUOTE_PERSON_FILTER_MAX_TOKENS", 8)
+    )
+    WIKIQUOTE_PERSON_FILTER_MAX_ATTEMPTS = int(
+        os.getenv("WIKIQUOTE_PERSON_FILTER_MAX_ATTEMPTS", 12)
+    )
+    WIKIQUOTE_MANUAL_SEARCH_LIMIT = int(os.getenv("WIKIQUOTE_MANUAL_SEARCH_LIMIT", 8))
+    WIKIQUOTE_MANUAL_PAGE_LIMIT = int(os.getenv("WIKIQUOTE_MANUAL_PAGE_LIMIT", 3))
+    WIKIQUOTE_MANUAL_QUOTES_PER_PAGE = int(
+        os.getenv("WIKIQUOTE_MANUAL_QUOTES_PER_PAGE", 8)
+    )
+    WIKIQUOTE_MANUAL_QUOTE_POOL_LIMIT = int(
+        os.getenv("WIKIQUOTE_MANUAL_QUOTE_POOL_LIMIT", 24)
+    )
+    WIKIQUOTE_MANUAL_QUOTE_SELECT_MAX_TOKENS = int(
+        os.getenv("WIKIQUOTE_MANUAL_QUOTE_SELECT_MAX_TOKENS", 120)
+    )
 
     # TTS
     TTS_OUTPUT_MODE = os.getenv("TTS_OUTPUT_MODE", "speaker")
